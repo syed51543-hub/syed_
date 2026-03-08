@@ -1,0 +1,46 @@
+name: Codex Auto Motor Review
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  codex-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run Codex Review
+        uses: openai/codex-action@v1
+        with:
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            Read the entire repository.
+
+            Improve motor_seal_in_stl.awl from a basic seal-in motor logic into a robust industrial motor control implementation.
+
+            Tasks:
+            1. Review the current logic.
+            2. Identify missing safety protections.
+            3. Identify missing feedback checks.
+            4. Identify missing alarms.
+            5. Propose the 3 best probable design solutions.
+            6. Compare them for safety and maintainability.
+            7. Implement the best solution.
+            8. Update the STL/AWL code.
+            9. Add comments explaining the design.
+
+            Ensure:
+            - Safe startup
+            - Restart prevention
+            - Fault reset logic
+            - Feedback validation
+            - Clear alarm bits
