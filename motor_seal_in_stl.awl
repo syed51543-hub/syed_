@@ -1,0 +1,12 @@
+ORGANIZATION_BLOCK OB1
+TITLE = Motor Seal-In Control
+BEGIN
+
+NETWORK
+TITLE = Start/Stop with self-hold latch
+      A     I 0.0      // Start PB (momentary)
+      O     Q 0.0      // Seal-in path (output holds itself ON)
+      AN    I 0.1      // Stop PB as NC logic condition
+      =     Q 0.0      // Motor contactor output
+
+END_ORGANIZATION_BLOCK
