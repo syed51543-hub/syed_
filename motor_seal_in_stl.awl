@@ -1,12 +1,177 @@
-ORGANIZATION_BLOCK OB1
-TITLE = Motor Seal-In Control
+ORGANIZATION_BLOCK OB100
+TITLE = Motor Control Startup Initialization
 BEGIN
 
 NETWORK
-TITLE = Start/Stop with self-hold latch
-      A     I 0.0      // Start PB (momentary)
-      O     Q 0.0      // Seal-in path (output holds itself ON)
-      AN    I 0.1      // Stop PB as NC logic condition
-      =     Q 0.0      // Motor contactor output
+TITLE = Safe startup state and restart inhibit
+// Force a safe state after CPU transition to RUN.
+// Restart inhibit is set and must be cleared by manual reset logic in OB1.
+      R     Q 0.0       // Motor contactor output OFF at startup
+      R     M 10.2      // Run command latch
+      R     M 10.3      // Fault latch
+      R     M 10.4      // Trip: Start failure
+      R     M 10.5      // Trip: Feedback lost while running
+      R     M 10.6      // Trip: Unexpected run feedback
+      R     M 11.5      // Running proven memory
+      S     M 10.7      // Restart inhibit (startup lock)
+
+END_ORGANIZATION_BLOCK
+
+ORGANIZATION_BLOCK OB1
+TITLE = Robust Motor Control with Trips and Alarms
+BEGIN
+
+NETWORK
+TITLE = I/O and marker map (documentation)
+// Inputs:
+// I 0.0 = Start PB (NO, momentary)
+// I 0.1 = Stop PB healthy (NC field contact; 1 = healthy/not pressed)
+// I 0.2 = External permissive/interlock healthy (1 = permit run)
+// I 0.3 = Motor run feedback (aux contact; 1 = motor proven running)
+// I 0.4 = Overload relay healthy (NC logic; 1 = healthy, 0 = tripped)
+// I 0.5 = Fault reset PB (NO, momentary)
+// Output:
+// Q 0.0 = Motor contactor command
+// Internal markers:
+// M 10.1 = Start pulse
+// M 10.2 = Run command latch
+// M 10.3 = Fault latch
+// M 10.4 = Trip start failure timeout
+// M 10.5 = Trip feedback lost while running
+// M 10.6 = Trip unexpected run feedback
+// M 10.7 = Restart inhibit
+// M 10.8 = Valid reset request
+// M 11.0 = Alarm summary (fault active)
+// M 11.1 = Alarm start failure
+// M 11.2 = Alarm feedback lost while running
+// M 11.3 = Alarm unexpected run
+// M 11.5 = Running proven memory
+// M 12.0 = Edge memory for start pulse
+// Timers:
+// T 1 = Start failure verify timeout (5 s)
+// T 2 = Feedback lost verify delay (1 s)
+// T 3 = Unexpected run verify delay (1 s)
+      NOP   0
+
+NETWORK
+TITLE = Manual reset validation (safe reset conditions only)
+// Reset is accepted only when:
+// - Reset PB is pressed
+// - Start PB is released (prevents immediate restart on held start)
+// - Feedback is OFF (prevents reset while motor is still running)
+// - Stop chain, permissive, and overload are healthy
+      A     I 0.5
+      AN    I 0.0
+      AN    I 0.3
+      A     I 0.1
+      A     I 0.2
+      A     I 0.4
+      =     M 10.8
+
+NETWORK
+TITLE = Apply manual reset to trips, fault latch, and restart inhibit
+      A     M 10.8
+      R     M 10.3
+      A     M 10.8
+      R     M 10.4
+      A     M 10.8
+      R     M 10.5
+      A     M 10.8
+      R     M 10.6
+      A     M 10.8
+      R     M 10.7
+      A     M 10.8
+      R     M 11.5
+
+NETWORK
+TITLE = Start pushbutton edge detect (anti-seal re-trigger)
+// Start command is edge-based so a held Start PB cannot retrigger after reset.
+      A     I 0.0
+      FP    M 12.0
+      =     M 10.1
+
+NETWORK
+TITLE = Running proven memory based on feedback
+// Mark running proven only when command is active and feedback is present.
+      A     M 10.2
+      A     I 0.3
+      S     M 11.5
+      AN    M 10.2
+      R     M 11.5
+
+NETWORK
+TITLE = Start failure timeout trip (command ON but no run feedback)
+// If motor is commanded ON and feedback does not appear within 5 s -> trip.
+      A     M 10.2
+      AN    I 0.3
+      L     S5T#5S
+      SD    T 1
+      A     T 1
+      S     M 10.4
+
+NETWORK
+TITLE = Feedback lost while running trip
+// If running was proven and feedback disappears for 1 s while commanded ON -> trip.
+      A     M 10.2
+      A     M 11.5
+      AN    I 0.3
+      L     S5T#1S
+      SD    T 2
+      A     T 2
+      S     M 10.5
+
+NETWORK
+TITLE = Unexpected run detection trip
+// If feedback is present while no run command exists for 1 s -> trip.
+      AN    M 10.2
+      A     I 0.3
+      L     S5T#1S
+      SD    T 3
+      A     T 3
+      S     M 10.6
+
+NETWORK
+TITLE = Fault latch and restart inhibit
+// Any trip sets a common fault latch and enforces restart inhibit.
+      A     M 10.4
+      O     M 10.5
+      O     M 10.6
+      S     M 10.3
+      A     M 10.3
+      S     M 10.7
+
+NETWORK
+TITLE = Run command latch with permissives and inhibits
+// Command logic is explicit and deterministic:
+// - Maintained by seal-in latch
+// - Drops out on stop/permissive/overload/fault/inhibit
+// - Starts only on Start PB rising edge
+      A     I 0.1
+      A     I 0.2
+      A     I 0.4
+      AN    M 10.3
+      AN    M 10.7
+      A(
+      A     M 10.1
+      O     M 10.2
+      )
+      =     M 10.2
+
+NETWORK
+TITLE = Motor output command
+      A     M 10.2
+      =     Q 0.0
+
+NETWORK
+TITLE = Alarm mapping (clear, separate diagnostics)
+// Alarm bits are separated for HMI/SCADA diagnostics.
+      A     M 10.4
+      =     M 11.1
+      A     M 10.5
+      =     M 11.2
+      A     M 10.6
+      =     M 11.3
+      A     M 10.3
+      =     M 11.0
 
 END_ORGANIZATION_BLOCK
